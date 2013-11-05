@@ -1,0 +1,189 @@
+import java.awt.Point;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Comparator;
+import java.util.Collections;
+import java.lang.Math;
+
+public class AStarAI {
+	
+	//Local reference to edge constant here; any cell with >=EDGE is an edge
+	public static int EDGE = 3;
+		
+	private op void ret(ArrayList<Point>);
+   private PointInfo points;
+	private int[] mapdata;
+	private int mapWidth, mapHeight;
+
+	public AStarAI(int mapWidth, int mapHeight, int[] map) {
+		this.mapWidth = mapWidth;
+		this.mapHeight = mapHeight;
+		mapdata = new int[mapWidth*mapHeight];
+		System.arraycopy(map, 0, mapdata, 0, mapWidth*mapHeight);
+	}
+
+   public op void createPath(int startX, int startY, int destX, int destY) {
+
+      final ArrayList<Point> path = new ArrayList<Point>();
+      Comparator<Point> comparator = new PointComparator();
+		points = new PointInfo(mapWidth, mapHeight);
+      final PriorityQueue<Point> open = new PriorityQueue<Point>(10,comparator);
+      Point current = new Point(startX, startY);
+      final Point goal = new Point(destX, destY);
+      double new_g;
+      boolean better;
+
+      points.setG(current,0);
+      points.setH(current,getHeuristic(current,goal));
+      open.add(current);
+
+      while (open.size() > 0) {
+         current = open.poll();
+         if (current.equals(goal))
+           break;
+
+         points.setVisited(current);
+         for (Point neighbor : getNeighbors(current)) {            
+            
+				if (!points.isVisited(neighbor)) {
+               new_g = points.getG(current) + getCost(current, neighbor);
+
+               if (!open.contains(neighbor)) {
+                  points.setH(neighbor,getHeuristic(neighbor, goal));
+                  better = true;
+               }
+
+               else if (new_g < points.getG(neighbor)) {
+                  open.remove(neighbor);
+                  better = true;
+               }
+
+               else
+                  better = false;
+
+               if (better) {
+                  points.setParent(neighbor,current);
+                  points.setG(neighbor,new_g);
+                  open.add(neighbor);
+               }
+            }
+         }
+      }
+
+      while (current != null) {
+         path.add(new Point(current));
+         current = points.getParent(current);
+      }
+
+      Collections.reverse(path);
+
+      send ret(path);
+   }
+
+	public op cap void (ArrayList<Point>) getOp() {
+		return ret;
+	}
+
+   private double getHeuristic(final Point pt1, final Point pt2) {
+
+      double euclidDist = Math.sqrt(Math.pow(pt2.getX()-pt1.getX(),2) + Math.pow(pt2.getY()-pt1.getY(),2));
+      
+      return euclidDist;
+   }
+
+	private int getCost(final Point start, final Point dest) {
+		
+		if (mapdata[(int)dest.getY()*mapWidth+(int)dest.getX()] >= EDGE)
+			return 1000;
+
+		else
+			return 1;
+	}
+
+	private ArrayList<Point> getNeighbors(Point pt) {
+		ArrayList<Point> neighbors = new ArrayList<Point>();
+		int x = (int)pt.getX(), y = (int)pt.getY();
+
+		//Add left neighbor if exists
+		if (x > 0)
+			neighbors.add(new Point(x-1, y));
+		//Add right neighbor if exists
+		if (x < mapWidth-1)
+			neighbors.add(new Point(x+1, y));
+		//Add top neighbor if exists
+		if (y > 0)
+			neighbors.add(new Point(x, y-1));
+		//Add bottom neighbor if exists
+		if (y < mapHeight-1)
+			neighbors.add(new Point(x, y+1));
+
+		return neighbors;
+	}
+
+}
+
+class PointInfo {
+   
+	private static double[][] g_scores, h_scores;
+   private static Point[][] parents;
+   private boolean[][] visited;
+
+   public PointInfo(int x, int y) {
+      g_scores = new double[x][y];
+      h_scores = new double[x][y];
+      parents = new Point[x][y];
+      visited = new boolean[x][y];
+   }
+
+   public void setG(Point p, double g) {
+      g_scores[(int)p.getX()][(int)p.getY()] = g;
+   }
+
+   public double getG(Point p) {
+      return g_scores[(int)p.getX()][(int)p.getY()];
+   }
+
+   public void setH(Point p, double h) {
+      h_scores[(int)p.getX()][(int)p.getY()] = h;
+   }
+
+   public static double getF(Point p) {
+      int currentX = (int) p.getX();
+      int currentY = (int) p.getY();
+      return (g_scores[currentX][currentY] + h_scores[currentX][currentY]);
+   }
+
+   public void setParent(Point p, Point parent) {
+      parents[(int)p.getX()][(int)p.getY()] = parent;
+   }
+
+   public Point getParent(Point p) {
+      return parents[(int)p.getX()][(int)p.getY()];
+   }
+
+   public void setVisited(Point p) {
+      visited[(int)p.getX()][(int)p.getY()] = true;
+   }
+
+   public boolean isVisited(Point p) {
+      return visited[(int)p.getX()][(int)p.getY()];
+   }
+}
+
+class PointComparator implements Comparator<Point> {
+   
+	public int compare(Point a, Point b) {
+      
+		double a_F = PointInfo.getF(a);
+      double b_F = PointInfo.getF(b);
+
+      if (a_F < b_F)
+         return -1;
+
+      else if (a_F > b_F)
+         return 1;
+
+      return 0;
+   }
+}

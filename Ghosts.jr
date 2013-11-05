@@ -1,0 +1,53 @@
+import java.util.ArrayList;
+import java.awt.Color;
+import java.awt.Graphics2D;
+
+public class Ghosts {
+	private final Color[] ghostColors = { 
+		Color.red, 
+		Color.pink, 
+		Color.cyan, 
+		Color.orange
+	};
+	
+	public ArrayList<Ghost> ghosts;
+	private Map map;
+	private User user;
+
+	public Ghosts(int x, int y, int numGhosts, User user, Map m) {
+		this.user = user;
+		this.map = m;
+		this.ghosts = new ArrayList<Ghost>();
+	   
+        for (int i=0;i<numGhosts;i++)
+       		ghosts.add(new Ghost(x+i, y, ghostColors[i], map, user));
+	}
+
+	public op void respawn() {
+		for (Ghost ghost : ghosts)
+			ghost.respawn();
+	}
+
+	public op void play() {
+		for (Ghost ghost : ghosts)
+			ghost.play();
+	}
+
+    public void paint(Graphics2D g) {
+        for (Ghost ghost : ghosts) 
+        	ghost.paint(g);
+    }
+
+	 public op void newLevel() {
+		for (Ghost ghost : ghosts) {
+			send ghost.trap();
+		}
+		for (Ghost ghost : ghosts) {
+			try {
+				Thread.sleep(5000);
+			} catch (Exception e) { e.printStackTrace(); }
+
+			ghost.release();
+		}
+	}
+}

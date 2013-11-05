@@ -1,0 +1,339 @@
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.event.KeyEvent;
+import javax.swing.JPanel;
+import javax.swing.Timer;
+import javax.swing.JFrame;
+import edu.ucdavis.jr.JR;
+
+public class Game extends JPanel {
+	private long fps = TARGET_FPS, 
+				 ups = TARGET_UPS;
+	private cap void (int) keyChar;
+	private cap void (int) moveUser;
+
+	private int resX; private int resY;
+
+	private int highscore;
+	private boolean inGame;
+	private boolean paused;
+	private boolean runMainLoop;
+
+	private sem mainMutex = 1;
+
+	private User user;
+	private Map map;
+	private Ghosts AI;
+
+	public Game(int x, int y, cap void (int) ki) {
+		keyChar = ki;
+		resX = x;
+		resY = y;
+		highscore = 0;
+		map = new Map(0, 0, 0);
+		user =  new User(14, 23, Color.yellow, map); 
+		moveUser = user.getMoveOp();
+		AI = new Ghosts(12, 14, 4, user, map);
+//		user = map.getUser();
+//		moveUser = user.getMoveOp();
+//		AI = map.getAI();
+		initGame();
+	}
+
+	public void initGame() {
+		inGame = false;
+		paused = false;
+		newLevel();
+	}
+
+	public op void newLevel() {
+		map.newLevel();
+		respawn();
+		send AI.newLevel();
+	}
+
+	public op void respawn() {
+		send user.respawn();
+		send AI.respawn();
+		send runMainLoop();
+	}
+
+	public op void gameOver() {
+		inGame = false;
+		try {
+			Thread.sleep(2000);
+		} catch (Exception e) {e.printStackTrace(); }
+
+		if (user.score > highscore) highscore = user.score;
+		user.lives = 3;
+		user.score = 0;
+		initGame();
+	}
+
+	public op void complete();
+	public process completeLevel {
+		while (true) {
+			receive complete();
+			user.score += 1000;
+			send breakLoop();
+			JR.nap(2500);
+			newLevel();
+		}
+	}
+
+
+	public process ghostInteraction {
+		while (true) {
+			for (Ghost ghost : AI.ghosts) {
+				if ((user.posX == ghost.posX) && (user.posY == ghost.posY)) {
+					if (map.poweredUp) {
+						user.score += 100;
+						ghost.respawn();
+					}
+					else {
+						send breakLoop();
+
+						user.lives--;
+						try {
+							Thread.sleep(2000);
+						} catch (Exception e) {e.printStackTrace(); }
+
+						if (user.lives <= 0) gameOver();
+						else respawn();
+
+						break;
+					}
+				}
+			}				
+		}
+	}
+
+	private static long TARGET_FPS = 100, //desired frames drawn per second
+					    TARGET_UPS = 100; //desired updates per second
+	
+	
+	public op void runRenderLoop();
+	public op void renderLoop() {
+		long before, after, elapsed, a, targetMillisPerCycle = 1000 / TARGET_FPS, 
+			  targetTimeElapsed = 0, actualTimeElapsed = 0, aggregateLatency, numFrames = 1, 
+			  startTime = System.currentTimeMillis();
+		
+		while(true) {
+			receive runRenderLoop();
+			targetTimeElapsed = 0;
+			actualTimeElapsed = 0;
+			numFrames = 1;
+			startTime = System.currentTimeMillis();
+			while(true) {
+				repaint();
+
+				targetTimeElapsed += targetMillisPerCycle;
+				actualTimeElapsed = System.currentTimeMillis() - startTime;
+				fps =  actualTimeElapsed == 0 ? 0 : 1000 * numFrames++ / actualTimeElapsed;
+				aggregateLatency = actualTimeElapsed  - targetTimeElapsed;
+
+				//am I ahead?
+				if(aggregateLatency < 0) {
+					//slow the pipeline down
+					JR.nap(-1*aggregateLatency);
+				}
+			}
+		}
+	}
+
+	public op void runMainLoop();
+	public op void breakLoop();
+	public process mainLoop {	
+		long elapsed, targetMillisPerCycle = 1000 / TARGET_UPS, targetTimeElapsed, actualTimeElapsed, aggregateLatency, numFrames, startTime;
+		send renderLoop();
+		while (true) {
+			receive runMainLoop();
+			send runRenderLoop();
+			startTime = System.currentTimeMillis();
+			numFrames = 1;
+			actualTimeElapsed = 0;
+			targetTimeElapsed = 0;
+
+			while (true) {
+				inni void breakLoop() { 
+					break;
+				}
+				[] else {
+					if (inGame && !paused) {
+						send user.play();
+						send AI.play();
+					}
+					if (map.numFood <= 0) send complete();
+					repaint();
+				
+					targetTimeElapsed += targetMillisPerCycle;
+					actualTimeElapsed = System.currentTimeMillis() - startTime;
+					ups =  actualTimeElapsed == 0 ? 0 : 1000 * numFrames++ / actualTimeElapsed;
+					aggregateLatency = actualTimeElapsed  - targetTimeElapsed;
+
+					//am I ahead?
+					if(aggregateLatency < 0) {
+						//slow the pipeline down
+						JR.nap(-1*aggregateLatency);
+					}
+				}
+			}	
+		}
+	}
+
+
+	public void paintComponent(Graphics g) {
+		super.paintComponent(g);
+		Graphics2D g2d = ((Graphics2D)g);
+		g2d.setColor(Color.black);
+		g2d.fillRect(0, 0, resX, resY);
+
+		//Render logic here for all objects (walls, items, ghosts, player) 
+		for (Item[] oneD : map.getItems()) {
+			for (Item item : oneD) {
+				if (item != null)
+					item.paint(g2d);
+			}
+		}
+
+		if (inGame) {
+			if (paused) {
+				showBanner(g2d, "Paused");
+			} 
+			else {
+				showScore(g2d);
+				user.paint(g2d);
+				AI.paint(g2d);
+			}
+		}
+		else showIntro(g2d);
+	}
+
+	private static class COLOR { 
+		public static Color BOX_BG = new Color(10, 10, 10, 220);
+	}
+
+	public void showIntro(Graphics2D g2d) {
+		Font large = new Font("SansSerif", Font.BOLD, 32);
+		Font small = new Font("SansSerif", Font.PLAIN, 14);
+		FontMetrics lmetr = g2d.getFontMetrics(large);
+		FontMetrics smetr = g2d.getFontMetrics(small);
+
+		g2d.setColor(COLOR.BOX_BG);
+		g2d.fillRect(150, 250, resX-300, 250);
+		g2d.setColor(Color.white);
+		g2d.drawRect(150, 250, resX-300, 250);
+
+		String s = "PAC-MAN"; 
+		g2d.setFont(large);
+		g2d.setColor(Color.white);
+		g2d.drawString(s, (resX - lmetr.stringWidth(s)) / 2, 300);
+
+		s = "HIGH SCORE: " + highscore;
+		g2d.setFont(small);
+		g2d.drawString(s, (resX - smetr.stringWidth(s)) / 2, 330);
+
+        g2d.setColor(Color.yellow);
+      	g2d.fillArc(resX/2-11, 360, 24, 24, 25, 305);
+        g2d.setColor(Color.yellow);
+      	g2d.fillArc(resX/2-11, 360, 24, 24, 25, 305);
+
+		s = "Press ENTER to start.";
+		g2d.setColor(Color.white);
+		g2d.setFont(small);
+		g2d.drawString(s, (resX - smetr.stringWidth(s)) / 2, 430);
+		s = "Use ARROW KEYS to move.";
+		g2d.setFont(small);
+		g2d.drawString(s, (resX - smetr.stringWidth(s)) / 2, 450);
+		s = "Press ESC to exit.";
+		g2d.setFont(small);
+		g2d.drawString(s, (resX - smetr.stringWidth(s)) / 2, 470);
+	}
+	
+	public void showScore(Graphics2D g2d) {
+		Font small = new Font("SansSerif", Font.BOLD, 12);
+		FontMetrics smetr = g2d.getFontMetrics(small);
+		String s;
+
+		g2d.setFont(small);
+		g2d.setColor(Color.white);
+		s = "LIVES: " + user.lives;
+		g2d.drawString(s, (resX - smetr.stringWidth(s) - 15), (50));
+		s = "SCORE: " + user.score;
+		g2d.drawString(s, (resX - smetr.stringWidth(s) - 15 ), (70));
+		s = "FPS: " + fps;
+		g2d.drawString(s, (resX - smetr.stringWidth(s) - 15), 90);
+	}
+
+	public void showBanner(Graphics g2d, String s) {
+		g2d.setColor(new Color(10, 10, 10, 100));
+		g2d.fillRect(0, 0, resX, resY);
+
+		int width = 200, height = 50,
+			lx = (int) (0.5*(this.getWidth() - width)),
+			ly = (int) (0.5*(this.getHeight() - height));
+		Font large = new Font("SansSerif", Font.BOLD, 28);
+		Font small = new Font("Monospaced", Font.PLAIN, 14);
+		FontMetrics lmetr = g2d.getFontMetrics(large);
+		FontMetrics smetr = g2d.getFontMetrics(small);
+
+		// Title box
+		g2d.setColor(new Color(10, 10, 10, 200));
+		g2d.fillRect(lx, ly, width, height);
+		g2d.setColor(Color.white);
+		g2d.drawRect(lx, ly, width, height);
+
+		g2d.setFont(large);
+		g2d.setColor(Color.white);
+		g2d.drawString(s, (int) ((resX - lmetr.stringWidth(s)) / 2), (int) (ly + 35));
+	}
+
+	process KeyListener {
+
+		while (true) {
+			inni void keyChar(int key) {
+
+				if (inGame) {
+					switch (key) {
+						case KeyEvent.VK_LEFT:
+							send moveUser(GamePiece.LEFT); 
+							break;
+						case KeyEvent.VK_RIGHT:
+							send moveUser(GamePiece.RIGHT);
+							break;
+						case KeyEvent.VK_UP:
+							send moveUser(GamePiece.UP);
+							break;
+						case KeyEvent.VK_DOWN:
+							send moveUser(GamePiece.DOWN);
+							break;
+						case KeyEvent.VK_SPACE:
+							paused = !paused;
+							break;
+						case KeyEvent.VK_ESCAPE:
+							inGame = false;
+							break;
+						default:
+							break;
+					}
+				}
+
+				else { 
+					switch (key) {
+						case KeyEvent.VK_ENTER:
+							inGame = true;
+							break;
+						case KeyEvent.VK_ESCAPE:
+							System.exit(0);
+							break;
+						default:
+							break;
+					} //end switch
+				} //end else
+			} //end inni
+		} //end while
+	} //end process (KeyListener)
+}

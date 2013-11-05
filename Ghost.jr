@@ -1,0 +1,122 @@
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.util.ArrayList;
+import java.util.Random;
+
+public class Ghost extends GamePiece {
+    private AStarAI AI;
+    private cap void (ArrayList<Point>) path;
+	private boolean trapped;
+	private boolean needsPath;
+	private ArrayList<Point> currentPath;
+	private Point nextMove;
+	private User user;
+
+	public Ghost(int x, int y, Color color, Map m, User usr) {
+		posX = spawnX = x;
+		posY = spawnY = y;
+		map = m;
+		offsetX = 0;
+		offsetY = 0;
+		this.color = color;
+		direction = LEFT;
+		AI = new AStarAI(map.width, map.height, map.getRawData()); // on new vm();
+		path = AI.getOp();
+		user = usr;
+		needsPath = true;
+		trapped = true;
+	}
+
+	public op void respawn() {
+		posX = spawnX;
+		posY = spawnY;
+		direction = LEFT;
+	}
+
+	public void play() {
+		boolean nextStep = false;
+		
+		if (trapped)
+			return;
+
+		if (needsPath) {
+			send AI.createPath(posX, posY, user.getX(), user.getY());
+			receive path(currentPath);
+			needsPath = false;
+			nextMove = currentPath.remove(0);
+		}
+
+		int x = (int)nextMove.getX();
+		int y = (int)nextMove.getY();
+		Random r = new Random();
+
+		if (r.nextInt(100) > 20) {	
+			if (x < posX) { //Next move is left neighbor
+				offsetX -= speed;
+		   	if (offsetX <= -(map.blocksize/2)) { // Move into next cell
+					offsetX += map.blocksize;
+					posX -= 1;
+					nextStep = true;
+				}
+			}
+	
+			else if (x > posX)  { //Next move is right neighbor
+				offsetX += speed;
+				if (offsetX >= (map.blocksize*1.5)) {
+					offsetX -= map.blocksize;
+					posX += 1;
+					nextStep = true;
+				}
+			}
+
+			else if (y < posY) { //Next move is top neighbor
+				offsetY -= speed;
+				if (offsetY <= -(map.blocksize/2)) {
+					offsetY += map.blocksize;
+					posY -= 1;
+					nextStep = true;
+				}
+			}
+
+			else if (y > posY) { // Next move is bottom neighbor
+				offsetY += speed;
+				if (offsetY >= (map.blocksize*1.5)) {
+					offsetY -= map.blocksize;
+					posY += 1;
+					nextStep = true;
+				}
+			}
+
+			else
+				nextStep = true;
+		
+			if (currentPath.isEmpty())
+				needsPath = true;
+			else if (nextStep)
+				nextMove = currentPath.remove(0);
+		}
+
+		else { //Generate random next step
+		}
+	}
+
+	public void paint(Graphics2D g) {
+		int x = posX*map.blocksize + offsetX;
+		int y = posY*map.blocksize + offsetY;
+
+		if (map.poweredUp) g.setColor(map.powerColor);
+		else g.setColor(color);
+
+		g.fillArc(x-6, y-12, 20, 20, 0, 360);
+		g.fillRect(x-6, y, 20, 20);
+	}
+	
+	public op void trap() {
+		trapped = true;
+	}
+
+	public void release() {
+		trapped = false;
+	}
+}
